@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8"/>
+    <title>Paper 6 Reduced</title>
+</head>
+<body>
+
+   <h3>The Paper 6 Reduced Problem Algorithm</h3>
+   <button onclick="Launch()">Run</button>
+   <p id="out"></p>
+
+<script>
+
+   var output = document.getElementById("out");
+
+   // set up network enviroment
+
+   var tick; //unit of time
+   const VM_capacity = 3;
+   const link_capacity = 4;
+   const SFF_capacity = 3;
+   const SF_types = [1,2,3];    //5 different types of service functions
+   const num_SN = 2;
+   var SFF1 = [];    //what is this keeping track of
+   var SFF2 = [];
+   var Egress = [];
+   var SN1_SFs = [1,1,2];   //initial balanced network
+   var SN2_SFs = [2,3,3];
+   var SN1 = [null,null,null];
+   var SN2 = [null,null,null];
+   var links = {
+      ingress_to_SFF1: [],   //each link has capacity of 5 SFCs
+      SSF1_to_SFF2: [],
+      SSF2_to_egress: [],
+      SFF1_to_SN1: [],
+      SFF2_to_SN2: [],
+   }; 
+   var dropped_packets = 0;
+   var SFCs = [];
+   var count = 1;
+
+   function InitialDestination(incommingPacket)
+   {
+    //determines where to send SFC
+    if(incommingPacket.SFC[0] == 1)
+    {
+        incommingPacket.destination = "SN1";
+    }
+    else{
+        incommingPacket.destination = "SN2";
+    }
+    
+    //boot up SN VMs if nessasy, control netwoek resources (save this for lkater if have time)
+   }
+
+   function Launch()
+   {
+       //for 100 data items
+       let data_items_remaining = 15;
+       while(data_items_remaining > 0)
+       {
+            console.log("\nRound "+ count);
+          // generate the SFC 
+          let sfc = GenerateSFC();
+          let newSFC = {
+            id: count,
+            SFC: sfc,
+            dropped: false,
+            sucess: false,
+            lifespan: 0,
+            destination: '' 
+          };
+          SFCs.push(newSFC);
+          count++;
+
+          //send new SFC to link ingress_SFF1
+          if(links.ingress_to_SFF1.length > link_capacity)  //link is full ingress SN drops packed
+          {
+            newSFC.dropped = true;
+            dropped_packets++;
+            console.log("packet dropped, "+dropped_packets+" dropped so far");
+          }
+          else{
+              links.ingress_to_SFF1.push(newSFC);
+          }
+
+
+          //check every SFF to 
+
+          // Decide where to send SFC
+
+          // check for VM with SF available
+          
+          InitialDestination(newSFC);   //determine destination
+          console.log("Packet " + newSFC.id + " in route to "+newSFC.destination);
+          //console.log(newSFC);
+
+          //have a turn for each round
+          Tick();
+
+          //updates packets ttl
+          UpdateSFClifespan();
+          data_items_remaining--;   //end loop
+       }
+
+       //need to continue to work packets through network until all packets sucess or failure
+   }
+
+   function Tick()
+   {
+       SN1_turn();
+       SN2_turn();  //fix errors
+       Egress_turn();
+       SFF1_turn();
+        SFF2_turn(); //fir errors,makeit match SFF1
+
+       //log state of network each turn
+       //console.log(NetworkState());
+       console.log(links.ingress_to_SFF1);
+       console.log(SFF1);
+   }
+
+   function SN1_turn()
+   {
+    //process SFC
+    console.log(SN1);
+    for(let i=0; i<VM_capacity; i++)
+    {
+        let VM = SN1[i];
+        if(VM == null)
+        {
+            continue;
+        }
+        else{
+            //process SF request
+            if(SN1_SFs[i] == VM.SFC[0])    
+            {
+                console.log("SN1 - VM "+i+ " processed SF "+SN1_SFs[i] +" of SFC "+ VM.id);
+                VM.SFC.shift();
+                if(VM.SFC.length < 1)   //SFC is complete needs to be removed
+                {
+                    console.log("SN1 - SFC "+VM.id+" is complete, destination = egress node");
+                    VM.destination = 'Egress';
+                }
+                else {
+                    //see if this SN can further accomedate SFC
+                    let res = SN1_availability(VM.SFC[0]);
+                    if(res == -1)
+                    {
+                        //can not handle next SFF send to SN2
+                        VM.destination = 'SN2';
+                        console.log("SN1 - SFC "+VM.id+" has "+VM.SFC[0]+" SFs remaining, destination = SN2");
+                    }
+                    else{
+                        SN1[res] = SN1[i];
+                        SN1[i] = null;
+                        console.log("SN1 - SFC "+VM.id+" has "+VM.SFC[0]+" SFs remaining, remaining at SN1 to be processed, migrating to VM "+res);
+
+                    }
+                }
+            }
+        }
+    }
+
+    //Inport and Export incomming/outgoing request
+    if(links.SFF1_to_SN1.length < link_capacity)
+    {
+        //export
+        if(SN1.length <1)
+        {
+            //have nothing to export
+            console.log("SN1 - has nothing to to transmit");
+        }
+        else{
+            //
+            for(let i=VM_capacity; i>0; i--)
+            {
+                if(SN1[i] == null)
+                {
+                    continue;
+                }
+                if(SN1[i].destination == "SN2" || SN1[i].destination == "Egress")
+                {
+                    //send out of VM
+                    links.SFF1_to_SN1.push(SN1[i]);
+                    console.log("SN1 - transmitting SFC "+SN1[i].id+" to SFF1 with destination "+SN1[i].destination);
+                    SN1[i] = null;
+                    break;
+                }
+            }
+        }
+
+       
+
+    }
+    else{
+        //do nothing
+
+    }
+    if(SN1[0]==null || SN1[1]==null || SN1[2]==null )
+    {
+         //inport VMs
+         if(links.SFF1_to_SN1.length<1)
+        {
+            //no incomming packets
+            console.log("SN1 - No SFC to recieve");
+        }
+        else{
+            for(let i=0; i< links.SFF1_to_SN1.length; i++)
+            {
+                if(links.SFF1_to_SN1[i].destination == 'SN1')
+                {
+                    let tmp = links.SFF1_to_SN1[i].SFC[0];
+                    let res = SN1_availability(tmp);
+                    if(res == -1)
+                    {
+                        //do nothing for now
+                    }
+                    else{
+                        //accept packet and return
+                        SN1[res] = links.SFF1_to_SN1.slice(i, 1);
+                        console.log("SN1 - recieving SFC "+SN1[res].id+" at VM "+res+" with SF "+SN1[i].SFC[0]);
+                    }
+                }
+            }
+        }
+    }        
+
+   }
+
+   function SN2_turn()
+   {
+    //process SFC
+    for(let i=0; i<VM_capacity; i++)
+    {
+        let VM = SN2[i];
+        if(VM == null)
+        {
+            continue;
+        }
+        else{
+            //process SF request
+            if(SN2_SFs[i] == VM.SFC[0])    
+            {
+                console.log("SN2 - VM "+i+ " processed SF "+SN2_SFs[i] +" of SFC "+ VM.id);
+                VM.SFC.shift();
+                if(VM.SFC.length < 1)   //SFC is complete needs to be removed
+                {
+                    console.log("SN2 - SFC "+VM.id+" is complete, destination = egress node");
+                    VM.destination = 'Egress';
+                }
+                else {
+                    //see if this SN can further accomedate SFC
+                    let res = SN2_availability(VM.SFC[0]);
+                    if(res == -1)
+                    {
+                        //can not handle next SFF send to SN1
+                        VM.destination = 'SN2';
+                        console.log("SN2 - SFC "+VM.id+" has "+VM.SFC[0]+" SFs remaining, destination = SN1");
+                        console.log(VM);
+                    }
+                    else{
+                        SN2[res] = SN2[i];
+                        SN2[i] = null;
+                        console.log("SN2 - SFC "+VM.id+" has "+VM.SFC[0]+" SFs remaining, remaining at SN1 to be processed, migrating to VM "+res);
+                    }
+                }
+            }
+        }
+    }
+
+    //Inport and Export incomming/outgoing request
+    if(links.SFF2_to_SN2 < link_capacity)
+    {
+        //export
+        if(SN2.length <1)
+        {
+            //have nothing to export
+            console.log("SN2 - has nothing to to transmit");
+        }
+        else{
+            //
+            for(let i=VM_capacity; i>0; i--)
+            {
+                if(SN2[i] == null)
+                {
+                    continue;
+                }
+                if(SN2[i].destination == "SN2" || SN2[i].destination == "Egress")
+                {
+                    //send out of VM
+                    links.SFF2_to_SN2.push(SN2[i]);
+                    console.log("SN2 - transmitting SFC "+SN2[i].id+" to SFF1 with destination "+SN2[i].destination);
+                    SN2[i] = null;
+                    break;
+                }
+            }
+        }
+
+        //inport VMs
+        if(links.SFF2_to_SN2.length<1)
+        {
+            //no incomming packets
+            console.log("SN2 - No SFC to recieve");
+        }
+        else{
+            for(let i=0; i< links.SFF2_to_SN2.length; i++)
+            {
+                if(links.SFF2_to_SN2[i].destination == 'SN2')
+                {
+                    let tmp = links.SFF2_to_SN2[i].SFC[0];
+                    let res = SN2_availability(tmp);
+                    if(res == -1)
+                    {
+                        //do nothing for now
+                    }
+                    else{
+                        //accept packet and return
+                        SN2[res] = links.SFF2_to_SN2.slice(i, 1);
+                        console.log("SN2 - recieving SFC "+SN2[res].id+" at VM "+res+" with SF "+SN2[i].SFC[0]);
+                    }
+                }
+            }
+        }
+
+    }
+    else{
+        //do nothing
+
+    }        
+
+   }
+
+   function Egress_turn()
+   {
+       if(links.SSF2_to_egress >1)
+       {
+           let sfc = links.SSF2_to_egress.shift();
+           sfc.sucess = true;
+            Egress.push(sfc);
+       }
+   }
+
+   function SN1_availability(sf)
+   {
+        for(let i=0; i<VM_capacity;i++) 
+        {
+            if(SN1_SFs[i] == sf && SN1[i] == null)
+            {
+                return i;
+            }
+        }   
+       return -1;
+   }
+   function SN2_availability(sf)
+   {
+        for(let i=0; i<VM_capacity;i++) 
+        {
+            if(SN2_SFs[i] == sf && SN2[i] == null)
+            {
+                return i;
+            }
+        }   
+       return -1;
+   }
+
+   function FindVM(sf)
+   {
+       
+    for(let i=0; i<num_SN;i++)
+    {
+        if(SN1_SFs[i] == sf) // SN1 would have sf
+        {
+            return 1;
+        }
+        else if(SN2_SFs[i] == sf) // SN1 would have sf
+        {
+            return 2;
+        }
+        else if(SN3_SFs[i] == sf) // SN1 would have sf
+        {
+            return 3;
+        }
+
+        else{
+            return -1;
+        }
+    }
+   }
+
+   function NetworkState()
+   {
+       return {
+           state: {
+            SFF1,
+            SFF2,
+            links,
+            SN1,
+            SN2,
+            SN1_SFs,
+            SN2_SFs,
+            Egress,
+           }
+       }
+   }
+
+   function GenerateSFC()
+   {
+       var SFC = [];
+       while(SFC.length<2)
+       {
+         let number = Math.floor((Math.random() * 3) + 1);
+         if(SFC.includes(number))
+         {
+            continue;
+         }
+         else{
+             SFC.push(number);
+         }
+       }
+
+      SFC.sort();
+
+      return SFC;
+   }
+
+   function UpdateSFClifespan()
+   {
+    for(let i=0; i<SFCs.length;i++)
+    {
+        if(!SFCs[i].dropped && !SFCs[i].sucess)
+        {
+            SFCs[i].lifespan++;
+        }
+    }
+   }
+
+   function SFF1_turn()
+   {
+    //recieve packets
+        let from = '';
+        let inSFC = null;
+        let gotPacket = false;
+        if(SFF1.length < SFF_capacity)  //potentially accept packet
+        {
+        //check incoming links - accepts oldest packet first??  -- nah, i will just give certina links priority
+        //ingress to SFF1 - the oldest one is a array.shift()
+       
+            //SN1 priorty 1
+            if(links.SFF1_to_SN1.length>0)
+            {
+                for(let i=0;i<links.SFF1_to_SN1.length; i++)
+                {
+                    if(links.SFF1_to_SN1[i].destination == "SN2" || links.SFF1_to_SN1[i].destination == "Egress")
+                    {
+                        inSFC = links.SFF1_to_SN1.splice(i,1);
+                        from = "SN1";
+                        gotPacket =true;
+                        break;
+                    }
+                }
+            }
+                
+            //SFF2 priority 2
+            if(links.SSF1_to_SFF2.length>0 && !gotPacket)
+            {
+                for(let i=0;i<links.SSF1_to_SFF2.length; i++)
+                {
+                    if(links.SSF1_to_SFF2[i].destination == "SN1")
+                    {
+                        inSFC = links.SSF1_to_SFF2.splice(i,1);
+                        from = "SFF2";
+                        gotPacket =true;
+                        break;
+                    }
+                }
+            }
+
+            //ingress proity 3
+            if(links.ingress_to_SFF1.length>0 && !gotPacket)
+            {
+                inSFC = links.ingress_to_SFF1.shift();
+                gotPacket =true;
+                from = "ingress";
+            }
+
+            //accepts new packet
+            if(inSFC)
+            {
+                console.log("Accepted packet "+inSFC.id+" at SFF1, from "+from+" with destination "+inSFC.destination );
+                SFF1.push(inSFC);
+            }
+
+       }
+       else{
+            //ignore packet
+       } 
+
+    //push packets
+
+       if(SFF1.length ==0)  //if nothing to forward
+       {
+           console.log("SFF1 empty nothing to transmit" );
+           return;
+       }
+       //pushes out packet in queue
+       let theSFC = SFF1.shift();
+
+       //if going to SN1
+       if(theSFC.destination == "SN1")
+       {
+           //if going to SN1
+            if(links.SFF1_to_SN1.length < link_capacity-1) //check link capacity
+            {
+                links.SFF1_to_SN1.push(theSFC);
+                console.log("Transmitting packet "+theSFC.id+" to SN1 with destination "+theSFC.destination );
+                return;
+            }
+            else{
+                //hold on to it
+                SFF1.push(theSFC);  //may need to add it earlier to the queue
+            }
+       }
+       //if going to SN2 or egress
+       else if(theSFC.destination == "SN2"  || theSFC.destination == "Egress")
+       {
+            if(links.SSF1_to_SFF2.length <link_capacity-1) //check link capacity
+            {
+                links.SSF1_to_SFF2.push(theSFC);
+                console.log("Transmitting packet "+theSFC.id+" to SFF2 with destination "+theSFC.destination );
+                return;
+            }
+            else{
+                //hold on to it
+                SFF1.push(theSFC);  //may need to add it earlier to the queue
+            }
+       }
+      
+       else //error a SFc should always have a destination, drop packet
+       {
+           console.log("Error processing packet at SFF1, packet dropped");
+        theSFC.dropped = true;
+        dropped_packets++;
+       }
+   }
+
+   function SFF2_turn()
+   {
+    //recieve packets
+        let from = '';
+        let inSFC = null;
+        if(SFF2.length < SFF_capacity)  //potentially accept packet
+        {      
+            //SSF1 priorty 1
+            if(links.SSF1_to_SFF2.length>0)
+            {
+                for(let i=0;i<links.SSF1_to_SFF2.length; i++)
+                {
+                    if(links.SSF1_to_SFF2[i].destination == "SN2" || links.SSF1_to_SFF2[i].destination == "Egress")
+                    {
+                        inSFC = links.SSF1_to_SFF2.splice(i,1);
+                        from = "SFF1";
+                        break;
+                    }
+                }
+            }
+                
+            //SN2 priority 2
+            else if(links.SFF2_to_SN2.length>0)
+            {
+                for(let i=0;i<links.SFF2_to_SN2.length; i++)
+                {
+                    if(links.SFF2_to_SN2[i].destination == "SN1" || links.SFF2_to_SN2[i].destination == "Egress")
+                    {
+                        inSFC = links.SFF2_to_SN2.splice(i,1);
+                        from = "SN2";
+                        break;
+                    }
+                }
+            }
+
+            //accepts new packet
+            if(inSFC)
+            {
+                console.log("Accepted packet "+inSFC.id+" at SFF2, from "+from+" with destination "+inSFC.destination );
+                SFF2.push(inSFC);
+            }
+
+       }
+       else{
+            //ignore packet
+       } 
+
+    //push packets
+
+        if(SFF1.length ==0)  //if nothing to forward
+        {
+            console.log("SFF2 empty nothing to transmit" )
+            return;
+        }
+        //pushes out packet in queue
+        let theSFC = SFF2.shift();
+
+        //if going to SN1
+        if(theSFC.destination == "SN1")
+        {
+            //if going to SN1
+            if(links.SSF1_to_SFF2.length < link_capacity-1) //check link capacity
+            {
+                links.SSF1_to_SFF2.push(theSFC);
+                console.log("Transmitting packet "+theSFC.id+" to SSF1 with destination "+theSFC.destination );
+                return;
+            }
+            else{
+                //hold on to it
+                SFF2.push(theSFC);  //may need to add it earlier to the queue
+                theSFC = SFF2.shift();
+            }
+        }
+       
+        //if going to SN2
+        if(theSFC.destination == "SN2")
+        {
+            if(links.SFF2_to_SN2.length <link_capacity-1) //check link capacity
+            {
+                links.SFF2_to_SN2.push(theSFC);
+                console.log("Transmitting packet "+theSFC.id+", destination "+theSFC.destination );
+                return;
+            }
+            else{
+                //hold on to it
+                SFF1.push(theSFC);  //may need to add it earlier to the queue
+                theSFC = SFF2.shift();
+            }
+        }
+        
+        //if going to Egress
+        if(theSFC.destination == "Egress")
+        {
+            SSF2_to_egress.push(theSFC);
+            console.log("Transmitting packet "+theSFC.id+", destination "+theSFC.destination );
+            return;
+        }
+
+        else //error a SFc should always have a destination, drop packet
+        {
+            console.log("Error processing packet at SFF2, packet dropped");
+        theSFC.dropped = true;
+        dropped_packets++;
+        }
+   }
+
+</script> 
+
+</body>
+</html>

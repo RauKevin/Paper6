@@ -6,4 +6,4 @@ Establish a cost that factors in available link capacity, shortest path and node
 
 Cost = (a * ratio_link_capacity) + (b * cost_path) + (c * SF capacity)
 
-Attempt to determin if there is a relationship between a given network and our ratio of hyper parameters.
+Attempt to determine if there is a relationship between a given network and our ratio of hyper parameters.
